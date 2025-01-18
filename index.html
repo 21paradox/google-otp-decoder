@@ -2,12 +2,12 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Document</title>
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
-  <meta name="description" content="Description">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@4.13.1/lib/themes/vue.min.css">
+  <meta name="description" content="Description" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@4.13.1/lib/themes/vue.min.css" />
   <!-- Production -->
   <script src="https://cdn.jsdelivr.net/npm/vue@2.7.16/dist/vue.min.js"
     integrity="sha256-PB1LDFSejenUqbr7EqtwtqGsdH0HKTuYxbJbZjKZmv0=" crossorigin="anonymous"></script>
@@ -15,18 +15,149 @@
     integrity="sha256-RlAZdtwrF3W3guMw+DLOzVFvGY0dOaqav+siAaY4Oyk=" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/qr-scanner@1.4.2/qr-scanner.umd.min.js"
     integrity="sha256-QKo/5OEIMHPXiYwIlemNWqTUaaXBqrbzV8AoTvdbQT0=" crossorigin="anonymous"></script>
-
+  <script src="https://cdn.jsdelivr.net/npm/base32@0.0.7/lib/base32.min.js"></script>
 </head>
 
 <body>
   <div id="app"></div>
-  <script>
+  <script type="module">
+    import base32Encode from "https://cdn.jsdelivr.net/npm/base32-encode@2.0.0/+esm";
 
+    function queryUnescape(str) {
+      return decodeURIComponent(str.replace(/\+/g, " "));
+    }
+
+    function decodeOtpUri(input) {
+      let inputBase64 = input.replace(
+        "otpauth-migration://offline?data=",
+        ""
+      );
+      inputBase64 = queryUnescape(inputBase64);
+
+      const inputUtf8str = window.atob(inputBase64);
+
+      const carr = inputUtf8str.split("");
+      const buf = new Uint8Array(carr.length);
+      carr.forEach((c, i) => {
+        buf[i] = c.charCodeAt(0);
+      });
+
+      const pb = `syntax = "proto3";
+
+message MigrationPayload {
+  enum Algorithm {
+    ALGO_INVALID = 0;
+    ALGO_SHA1 = 1;
+  }
+
+  enum OtpType {
+    OTP_INVALID = 0;
+    OTP_HOTP = 1;
+    OTP_TOTP = 2;
+  }
+
+  message OtpParameters {
+    bytes secret = 1;
+    string name = 2;
+    string issuer = 3;
+    Algorithm algorithm = 4;
+    int32 digits = 5;
+    OtpType type = 6;
+    int64 counter = 7;
+  }
+
+  repeated OtpParameters otp_parameters = 1;
+  int32 version = 2;
+  int32 batch_size = 3;
+  int32 batch_index = 4;
+  int32 batch_id = 5;
+}`;
+      const parsed = protobuf.parse(pb);
+      const decodeRaw = parsed.root.MigrationPayload.decode(buf);
+      const jspayload = parsed.root.MigrationPayload.toObject(decodeRaw, {
+        enums: String,
+        longs: String,
+        // bytes: String,
+        defaults: true,
+        arrays: true,
+        objects: true,
+        oneofs: true,
+      });
+      jspayload.otpParameters.forEach((v) => {
+        const secretBase32 = base32Encode(v.secret, "RFC4648", {
+          padding: false,
+        });
+        v.secret = secretBase32;
+      });
+      return jspayload;
+    }
 
     window.$docsify = {
-      name: '',
-      repo: '',
-    }
+      name: "",
+      repo: "",
+      vueGlobalOptions: {
+        data() {
+          return {
+            otpUri: "",
+            otpJson: "",
+            qrScanner: null,
+            camList: [
+              {
+                label: "Environment Facing (default)",
+                value: "environment",
+              },
+              {
+                label: "user",
+                value: "user",
+              },
+            ],
+          };
+        },
+        methods: {
+          async changeCam(event) {
+            if (this.qrScanner) {
+              this.qrScanner.setCamera(event.target.value);
+            }
+          },
+          async scancamera() {
+            const video = this.$refs.video;
+
+            const qrScanner = new QrScanner(
+              video,
+              (result) => {
+                console.log(result.data);
+                this.otpUri = result.data;
+                const otpjson = decodeOtpUri(result.data);
+                this.otpJson = JSON.stringify(otpjson);
+              },
+              {
+                highlightScanRegion: true,
+                highlightCodeOutline: true,
+              }
+            );
+            this.qrScanner = qrScanner;
+
+            await qrScanner.start();
+            const cameras = await QrScanner.listCameras(true);
+
+            cameras.forEach((camera) => {
+              this.camList.push({
+                value: camera.id,
+                label: camera.label,
+              });
+            });
+          },
+
+          async uploadimg($event) {
+            const file = $event.target.files[0];
+            const result = await QrScanner.scanImage(file);
+            this.otpUri = result;
+            const otpjson = decodeOtpUri(result);
+            this.otpJson = JSON.stringify(otpjson);
+          },
+        },
+      },
+    };
   </script>
   <!-- Docsify v4 -->
   <script src="https://cdn.jsdelivr.net/npm/docsify@4.13.1/lib/docsify.min.js"
