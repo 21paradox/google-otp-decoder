@@ -1,0 +1,16 @@
+{
+  "name": "google-otp-decoder",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "yarn docsify serve ./"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "docsify": "^4.13.1",
+    "docsify-cli": "^4.4.4"
+  }
+}
